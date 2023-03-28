@@ -4,6 +4,35 @@
 
 #include <hip/hip_fp16.h>
 
+/*
+
+Changes from the original HIPified version of the cuda kernel in order for it to compile.
+
+1. Replaced 3 instances of:
+	'res2 = {};'
+   To:
+   	'std::memset(&res2, 0, sizeof(half2));'
+   Reason:
+   	When hipifying this line it would give the error that the assignment
+	operator for half2 is ambiguous. Solution was to simply initialize its memory
+	as pure zeros.
+
+2. Changed 3 instances of this line:
+	res += __half2float(res2.x) + __half2float(res2.y);
+   To:
+	float2 res2float = __half22float2(res2);
+	res += res2float.x + res2float.y;
+   Reason:
+   	Conversion from unsigned short to __half seems to not work in HIP.
+	Workaround is to use __half22float2() instead then adding the float vector's
+	members into res like the original line intended.
+ 3. Commented the atomicAdd function implementation below as it would complain of redefinition
+    in hipify. No idea if the function might be necessary to support older AMD GPUs like it
+    does for older NVidia GPUs.
+
+Original lines have been commented. You can CTRL+F the original lines if you wish to see it.
+*/
+
 // atomicAdd for double-precision floating-point numbers on hardware with
 // compute capability < 6.0 from:
 // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#atomic-functions
