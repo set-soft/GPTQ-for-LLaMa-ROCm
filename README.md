@@ -106,8 +106,8 @@ conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvi
 # for ROCm
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.4.2
 
-git clone https://github.com/qwopqwop200/GPTQ-for-LLaMa
-cd GPTQ-for-LLaMa
+git clone https://github.com/WapaMario63/GPTQ-for-LLaMa-ROCm
+cd GPTQ-for-LLaMa-ROCm
 pip install -r requirements.txt
 
 # For CUDA
