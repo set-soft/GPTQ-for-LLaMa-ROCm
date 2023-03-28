@@ -5,6 +5,21 @@ GPTQ is SOTA one-shot weight quantization method
 
 **This code is based on [GPTQ](https://github.com/IST-DASLab/gptq)**
 
+This is a fork that adds support for ROCm's HIP to use in AMD GPUs, only supported on linux. This has been tested only inside [text generation](https://github.com/oobabooga/text-generation-webui) on an RX 6800 on Manjaro (Arch based distro). 
+
+Running test_kernel.py on an RX 6800 yields these results:
+```
+Benchmarking LLaMa-7B FC2 matvec ...
+FP16: 0.0010962586402893067
+2bit: 0.0004005000591278076
+2bit: 0.0004368207454681397 (faster)
+3bit: 0.0003001902103424072
+3bit: 0.00033979535102844237 (faster)
+4bit: 0.00027743816375732424
+4bit: 0.00030428624153137207 (faster)
+8bit: 0.0002059342861175537
+```
+
 ## New Features
 Changed to support new features proposed by [GPTQ](https://github.com/IST-DASLab/gptq#new-features).
 
@@ -15,6 +30,7 @@ Changed to support new features proposed by [GPTQ](https://github.com/IST-DASLab
 **Currently, `groupsize` and `act-order` do not work together and you must choose one of them.**
 
 ## Result
+
 <details>
 <summary>LLaMA-7B(click me)</summary>
 
@@ -81,21 +97,30 @@ If you don't have [conda](https://docs.conda.io/en/latest/miniconda.html), insta
 ```
 conda create --name gptq python=3.9 -y
 conda activate gptq
+
+# For CUDA
 conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
 # Or, if you're having trouble with conda, use pip with python3.9:
 # pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu117
 
+# for ROCm
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.4.2
+
 git clone https://github.com/qwopqwop200/GPTQ-for-LLaMa
 cd GPTQ-for-LLaMa
 pip install -r requirements.txt
+
+# For CUDA
 python setup_cuda.py install
+# For ROCm
+python setup_rocm.py install
 
 # Benchmark performance for FC2 layer of LLaMa-7B
 CUDA_VISIBLE_DEVICES=0 python test_kernel.py
 ```
 ## Dependencies
 
-* `torch`: tested on v2.0.0+cu117
+* `torch`: tested on v2.0.0+cu117 or v2.0.0+rocm5.4.2
 * `transformers`: tested on v4.28.0.dev0
 * `datasets`: tested on v2.10.1
 * `safetensors`: tested on v0.3.0
