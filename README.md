@@ -5,7 +5,7 @@ GPTQ is SOTA one-shot weight quantization method
 
 **This code is based on [GPTQ](https://github.com/IST-DASLab/gptq)**
 
-This is a fork that adds support for ROCm's HIP to use in AMD GPUs, only supported on linux. This has been tested only inside [text generation](https://github.com/oobabooga/text-generation-webui) on an RX 6800 on Manjaro (Arch based distro). 
+This is a fork that adds support for ROCm's HIP to use in AMD GPUs, only supported on linux. This has been tested only inside [text generation](https://github.com/oobabooga/text-generation-webui) on an RX 6800 on Manjaro (Arch based distro). Make sure to use pytorch 1.13.1 as 2.0.0 has a bug that breaks this.
 
 Running test_kernel.py on an RX 6800 yields these results:
 ```
@@ -103,8 +103,8 @@ conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvi
 # Or, if you're having trouble with conda, use pip with python3.9:
 # pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu117
 
-# for ROCm
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.4.2
+# For ROCm. Use pytorch 1.13.1, 2.0.0 currently has a bug that makes this break.
+pip install torch==1.13.1+rocm5.2 torchvision==0.14.1+rocm5.2 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/rocm5.2
 
 git clone https://github.com/WapaMario63/GPTQ-for-LLaMa-ROCm
 cd GPTQ-for-LLaMa-ROCm
