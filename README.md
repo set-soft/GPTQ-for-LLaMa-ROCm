@@ -5,6 +5,7 @@ GPTQ is SOTA one-shot weight quantization method
 
 **This code is based on [GPTQ](https://github.com/IST-DASLab/gptq)**
 
+<<<<<<< HEAD
 This is a fork that adds support for ROCm's HIP to use in AMD GPUs, only supported on linux. This has been tested only inside [text generation](https://github.com/oobabooga/text-generation-webui) on an RX 6800 on Manjaro (Arch based distro). Make sure to use pytorch 1.13.1 as 2.0.0 has a bug that breaks this.
 
 Running test_kernel.py on an RX 6800 yields these results:
@@ -19,6 +20,9 @@ FP16: 0.0010962586402893067
 4bit: 0.00030428624153137207 (faster)
 8bit: 0.0002059342861175537
 ```
+=======
+**There is a [pytorch branch](https://github.com/qwopqwop200/GPTQ-for-LLaMa/tree/pytorch) that allows you to use `groupsize` and `act-order` together.**
+>>>>>>> d41cc26e4a38e69866bf693b602177e9556acfb8
 
 ## New Features
 Changed to support new features proposed by [GPTQ](https://github.com/IST-DASLab/gptq#new-features).
