@@ -21,6 +21,14 @@ FP16: 0.0010962586402893067
 4bit: 0.00030428624153137207 (faster)
 8bit: 0.0002059342861175537
 ```
+Average inference performance using textgen on an RX 6800 (5 tests):
+| Model (4bit)        | Tokens/s | 
+| --------------------| -------- | 
+| gpt4-x-alpaca-13b   |  14.97   | 
+| alpaca-13b-lora     |  16.39   | 
+| llama-13b           |  16.32   |
+
+Expect an average of around 14-15 tokens/s during normal usage if you use the same GPU.
 
 ## New Features
 Changed to support new features proposed by [GPTQ](https://github.com/IST-DASLab/gptq#new-features).
