@@ -22,7 +22,7 @@ FP16: 0.0010962586402893067
 8bit: 0.0002059342861175537
 ```
 Average inference performance using textgen on an RX 6800 (5 tests):
-| Model (4bit)        | Tokens/s | 
+| Model (4bit) (128g) | Tokens/s | 
 | --------------------| -------- | 
 | gpt4-x-alpaca-13b   |  14.97   | 
 | alpaca-13b-lora     |  16.39   | 
