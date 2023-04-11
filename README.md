@@ -5,7 +5,9 @@ GPTQ is SOTA one-shot weight quantization method
 
 **This code is based on [GPTQ](https://github.com/IST-DASLab/gptq)**
 
-This is a fork that adds support for ROCm's HIP to use in AMD GPUs, only supported on linux. This has been tested only inside [text generation](https://github.com/oobabooga/text-generation-webui) on an RX 6800 on Manjaro (Arch based distro). Make sure to use pytorch 1.13.1 as 2.0.0 has a bug that breaks this.
+This is a fork that adds support for ROCm's HIP to use in AMD GPUs, only supported on linux. This has been tested only inside oobabooga's [text generation](https://github.com/oobabooga/text-generation-webui) on an RX 6800 on Manjaro (Arch based distro). Make sure to use pytorch 1.13.1 as 2.0.0 has a bug that breaks this.
+
+Need a guide for installing this with oobabooga's text generation? [Check this wiki page here!](https://github.com/WapaMario63/GPTQ-for-LLaMa-ROCm/wiki/Install-with-Text-Generation)
 
 *NOTICE:* If you are using models that makes use of the newer cuda kernels from upstream or for whatever other reason, use the ```rocm-latest``` branch instead. This default branch for now is kept for stable usage in [text generation](https://github.com/oobabooga/text-generation-webui).
 
