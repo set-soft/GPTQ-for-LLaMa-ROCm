@@ -9,7 +9,7 @@ This is a fork that adds support for ROCm's HIP to use in AMD GPUs, only support
 
 Need a guide for installing this with oobabooga's text generation? [Check this wiki page here!](https://github.com/WapaMario63/GPTQ-for-LLaMa-ROCm/wiki/Install-with-Text-Generation)
 
-*NOTICE:* If you are using models that makes use of the newer cuda kernels from upstream or for whatever other reason, use the ```rocm-latest``` branch instead. This default branch for now is kept for stable usage in [text generation](https://github.com/oobabooga/text-generation-webui).
+**NOTICE:** If you are using models that were quantized with the newer cuda kernels from upstream use the ```rocm-latest``` branch! This default branch, for now, is kept for stable usage in [text generation](https://github.com/oobabooga/text-generation-webui)!
 
 Running test_kernel.py on an RX 6800 yields these results:
 ```
