@@ -1,3 +1,8 @@
+import random
+random.seed(0)
+import numpy as np
+np.random.seed(0)
+
 import torch
 import torch.nn as nn
 
@@ -7,6 +12,7 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
+torch.manual_seed(0)
 
 print('Benchmarking LLaMa-7B FC2 matvec ...')
 
@@ -28,7 +34,8 @@ tick = time.time()
 for _ in range(COUNT):
     torch.matmul(vec, mat, out=mul) 
     torch.cuda.synchronize()
-print('FP16:', (time.time() - tick) / COUNT)
+tref = (time.time() - tick) / COUNT
+print('FP32:', tref)
 
 DTYPE = torch.float
 mat = mat.to(DTYPE)
@@ -46,49 +53,56 @@ tick = time.time()
 for _ in range(COUNT):
     quant_cuda.vecquant2matmul(vec, mat, mul, scales, zeros, M)
     torch.cuda.synchronize()
-print('2bit:', (time.time() - tick) / COUNT)
+tres = (time.time() - tick) / COUNT
+print(f'2bit FP32: {(1-tres/tref)*100:5.2f}% {tres}')
 
 vec = vec.half()
 tick = time.time()
 for _ in range(COUNT):
     quant_cuda.vecquant2matmul_faster(vec, mat, mul, scales, zeros, M, M//2)
     torch.cuda.synchronize()
-print('2bit:', (time.time() - tick) / COUNT, '(faster)')
+tres = (time.time() - tick) / COUNT
+print(f'2bit FP16: {(1-tres/tref)*100:5.2f}% {tres}')
 
 vec = vec.float()
 tick = time.time()
 for _ in range(COUNT):
     quant_cuda.vecquant3matmul(vec, mat, mul, scales, zeros, M)
     torch.cuda.synchronize()
-print('3bit:', (time.time() - tick) / COUNT)
+tres = (time.time() - tick) / COUNT
+print(f'3bit FP32: {(1-tres/tref)*100:5.2f}% {tres}')
 
 vec = vec.half()
 tick = time.time()
 for _ in range(COUNT):
     quant_cuda.vecquant3matmul_faster(vec, mat, mul, scales, zeros, M, M//2)
     torch.cuda.synchronize()
-print('3bit:', (time.time() - tick) / COUNT, '(faster)')
+tres = (time.time() - tick) / COUNT
+print(f'3bit FP16: {(1-tres/tref)*100:5.2f}% {tres}')
 
 vec = vec.float()
 tick = time.time()
 for _ in range(COUNT):
     quant_cuda.vecquant4matmul(vec, mat, mul, scales, zeros, M)
     torch.cuda.synchronize()
-print('4bit:', (time.time() - tick) / COUNT)
+tres = (time.time() - tick) / COUNT
+print(f'4bit FP32: {(1-tres/tref)*100:5.2f}% {tres}')
 
 vec = vec.half()
 tick = time.time()
 for _ in range(COUNT):
     quant_cuda.vecquant4matmul_faster(vec, mat, mul, scales, zeros, M, M//2)
     torch.cuda.synchronize()
-print('4bit:', (time.time() - tick) / COUNT, '(faster)')
+tres = (time.time() - tick) / COUNT
+print(f'4bit FP16: {(1-tres/tref)*100:5.2f}% {tres}')
 
 vec = vec.float()
 tick = time.time()
 for _ in range(COUNT):
     quant_cuda.vecquant8matmul(vec, mat, mul, scales, zeros, M)
     torch.cuda.synchronize()
-print('8bit:', (time.time() - tick) / COUNT)
+tres = (time.time() - tick) / COUNT
+print(f'8bit FP32: {(1-tres/tref)*100:5.2f}% {tres}')
 print('Verifiying kernel correctness ...')
 
 M = 4096
@@ -112,12 +126,18 @@ qlayer.pack(layer, quantizer.scale, quantizer.zero)
 qlayer = qlayer.to(DEV)
 layer = layer.to(DEV)
 
+print('2 bits:')
 with torch.no_grad():
-    print('2bit Simu:', layer.to(DEV)(vec))
-    print('2bit Kern:', qlayer(vec))
+    ref = layer.to(DEV)(vec)
+    res = qlayer(vec)
     qlayer.faster = True
-    print('2bit Kern:', qlayer(vec.half()), '(faster)')
-    print('\n')
+    res_half = qlayer(vec.half())
+
+max_abs_error = (res - ref).abs().max().item()
+assert max_abs_error < 2e-5, max_abs_error
+print(f'- Ok ({max_abs_error:.10f})')
+max_abs_error = (res_half - ref).abs().max().item()
+print(f'- ?? ({max_abs_error:.10f})')
 
 layer = nn.Linear(M, N)
 vec = torch.randn(B,L,M).to(DEV)
@@ -135,12 +155,18 @@ qlayer.pack(layer, quantizer.scale, quantizer.zero)
 qlayer = qlayer.to(DEV)
 layer = layer.to(DEV)
 
+print('3 bits:')
 with torch.no_grad():
-    print('3bit Simu:', layer.to(DEV)(vec))
-    print('3bit Kern:', qlayer(vec))
+    ref = layer.to(DEV)(vec)
+    res = qlayer(vec)
     qlayer.faster = True
-    print('3bit Kern:', qlayer(vec.half()), '(faster)')
-    print('\n')
+    res_half = qlayer(vec.half())
+
+max_abs_error = (res - ref).abs().max().item()
+assert max_abs_error < 2e-5, max_abs_error
+print(f'- Ok ({max_abs_error:.10f})')
+max_abs_error = (res_half - ref).abs().max().item()
+print(f'- ?? ({max_abs_error:.10f})')
 
 layer = nn.Linear(M, N)
 vec = torch.randn(B,L,M).to(DEV)
@@ -158,12 +184,18 @@ qlayer.pack(layer, quantizer.scale, quantizer.zero)
 qlayer = qlayer.to(DEV)
 layer = layer.to(DEV) 
 
+print('4 bits:')
 with torch.no_grad():
-    print('4bit Simu:', layer.to(DEV)(vec))
-    print('4bit Kern:', qlayer(vec))
+    ref = layer.to(DEV)(vec)
+    res = qlayer(vec)
     qlayer.faster = True
-    print('4bit Kern:', qlayer(vec.half()), '(faster)')
-    print('\n')
+    res_half = qlayer(vec.half())
+
+max_abs_error = (res - ref).abs().max().item()
+assert max_abs_error < 2e-5, max_abs_error
+print(f'- Ok ({max_abs_error:.10f})')
+max_abs_error = (res_half - ref).abs().max().item()
+print(f'- ?? ({max_abs_error:.10f})')
 
 layer = nn.Linear(M, N)
 vec = torch.randn(B,L,M).to(DEV)
@@ -181,7 +213,12 @@ qlayer.pack(layer, quantizer.scale, quantizer.zero)
 qlayer = qlayer.to(DEV)
 layer = layer.to(DEV)
 
+print('8 bits:')
 with torch.no_grad():
-    print('8bit Simu:', layer.to(DEV)(vec))
-    print('8bit Kern:', qlayer(vec))
-    print('\n')
+    ref = layer.to(DEV)(vec)
+    res = qlayer(vec)
+
+max_abs_error = (res - ref).abs().max().item()
+assert max_abs_error < 2e-5, max_abs_error
+print(f'- Ok ({max_abs_error:.10f})')
+
