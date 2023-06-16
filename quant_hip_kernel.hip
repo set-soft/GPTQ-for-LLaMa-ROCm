@@ -1,63 +1,81 @@
+#include "hip/hip_runtime.h"
 #include <torch/all.h>
 #include <torch/python.h>
 #include <hip/hip_runtime.h>
-
+#include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
 
 /*
+SET here are some details:
+- Created this file using:
+  hipify-perl quant_cuda_kernel.cu > quant_hip_kernel.hip
 
-Changes from the original HIPified version of the cuda kernel in order for it to compile.
+- To get hipify-perl I used the following docker image:
+  rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
+  This is an AMD official image.
 
-1. Replaced 3 instances of:
-	'res2 = {};'
-   To:
-   	'std::memset(&res2, 0, sizeof(half2));'
-   Reason:
-   	When hipifying this line it would give the error that the assignment
-	operator for half2 is ambiguous. Solution was to simply initialize its memory
-	as pure zeros.
+- Took `quant_hip.cpp` and `setup_rocm.py` files from the GitHub repo:
+  https://github.com/WapaMario63/GPTQ-for-LLaMa-ROCm
 
-2. Changed 3 instances of this line:
-	res += __half2float(res2.x) + __half2float(res2.y);
-   To:
-	float2 res2float = __half22float2(res2);
-	res += res2float.x + res2float.y;
-   Reason:
-   	Conversion from unsigned short to __half seems to not work in HIP.
-	Workaround is to use __half22float2() instead then adding the float vector's
-	members into res like the original line intended.
- 3. Commented the atomicAdd function implementation below as it would complain of redefinition
-    in hipify. No idea if the function might be necessary to support older AMD GPUs like it
-    does for older NVidia GPUs.
+- Used information from WapaMario's `quant_hip_kernel.hip` file.
 
-Original lines have been commented. You can CTRL+F the original lines if you wish to see it.
+- To compile this file I used the following docker image:
+  pytorch/manylinux-builder:rocm5.2
+  This is an official PyTorch image.
+
+- I'm not removing atomicAdd() because I didn't get any issue using the above
+  mentioned docker image. WapaMario63 needed to comment out it.
+
+- Also found the "no matching function for call to '__half2float'" error.
+  I applied the solution suggested by WapaMario63, replace:
+  res += __half2float(res2.x) + __half2float(res2.y);
+  by
+  float2 res2float = __half22float2(res2);
+  res += res2float.x + res2float.y;
+
+- And also faced the "use of overloaded operator '=' is ambiguous (with operand
+  types 'half2' (aka '__half2') and 'void')" error.
+  To solve it I just added a cast to disambiguate the assignment, replacing;
+  res2 = {};
+  by
+  res2 = half2({});
+  This solution performed much better than WapaMario63's solution.
+
+- At least on my Radeon RX5500 XT the "faster" versions has 100 times more
+  error that the regular ones.
+
+- Removed some tabs and extra spaces.
+
+- The original implementation comes from:
+  https://github.com/qwopqwop200/GPTQ-for-LLaMa
+  Look for the "old-cuda" branch.
 */
 
 // atomicAdd for double-precision floating-point numbers on hardware with
 // compute capability < 6.0 from:
 // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#atomic-functions
-// #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 600
-// __device__ double atomicAdd(
-//     double* address,
-//     double val
-// ) {
-//   unsigned long long int* address_as_ull = (unsigned long long int*)address;
-//   unsigned long long int old = *address_as_ull, assumed;
-// 
-//   do {
-//     assumed = old;
-//     old = atomicCAS(
-//       address_as_ull,
-//       assumed,
-//       __double_as_longlong(val + __longlong_as_double(assumed))
-//     );
-// 
-//   // Note: uses integer comparison to avoid hang in case of NaN (since NaN != NaN)
-//   } while (assumed != old);
-// 
-//   return __longlong_as_double(old);
-// }
-// #endif
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 600
+__device__ double atomicAdd(
+    double* address,
+    double val
+) {
+  unsigned long long int* address_as_ull = (unsigned long long int*)address;
+  unsigned long long int old = *address_as_ull, assumed;
+
+  do {
+    assumed = old;
+    old = atomicCAS(
+      address_as_ull,
+      assumed,
+      __double_as_longlong(val + __longlong_as_double(assumed))
+    );
+
+  // Note: uses integer comparison to avoid hang in case of NaN (since NaN != NaN)
+  } while (assumed != old);
+
+  return __longlong_as_double(old);
+}
+#endif
 
 template <typename scalar_t>
 __global__ void VecQuant2MatMulKernel(
@@ -65,9 +83,9 @@ __global__ void VecQuant2MatMulKernel(
     const       int* __restrict__ mat,
            scalar_t* __restrict__ mul,
     const  scalar_t* __restrict__ scales,
-    const  		int* __restrict__ zeros,
+    const       int* __restrict__ zeros,
     int batch,
-    int vec_height, 	
+    int vec_height,
     int height,
     int width,
     int zero_width,
@@ -80,9 +98,9 @@ __global__ void VecQuant3MatMulKernel(
     const       int* __restrict__ mat,
            scalar_t* __restrict__ mul,
     const  scalar_t* __restrict__ scales,
-    const  	int* __restrict__ zeros,
+    const       int* __restrict__ zeros,
     int batch,
-    int vec_height, 	
+    int vec_height,
     int height,
     int width,
     int zero_width,
@@ -95,9 +113,9 @@ __global__ void VecQuant4MatMulKernel(
     const       int* __restrict__ mat,
            scalar_t* __restrict__ mul,
     const  scalar_t* __restrict__ scales,
-    const  	int* __restrict__ zeros,
+    const       int* __restrict__ zeros,
     int batch,
-    int vec_height, 	
+    int vec_height,
     int height,
     int width,
     int zero_width,
@@ -110,9 +128,9 @@ __global__ void VecQuant8MatMulKernel(
     const       int* __restrict__ mat,
            scalar_t* __restrict__ mul,
     const  scalar_t* __restrict__ scales,
-    const  	int* __restrict__ zeros,
+    const       int* __restrict__ zeros,
     int batch,
-    int vec_height, 	
+    int vec_height,
     int height,
     int width,
     int zero_width,
@@ -140,7 +158,7 @@ __global__ void VecQuant3MatMulKernelFaster(
     const  float* __restrict__ scales,
     const    int* __restrict__ zeros,
     int batch,
-    int vec_height, 	
+    int vec_height,
     int height,
     int width,
     int zero_width,
@@ -154,7 +172,7 @@ __global__ void VecQuant4MatMulKernelFaster(
     const  float* __restrict__ scales,
     const    int* __restrict__ zeros,
     int batch,
-    int vec_height, 	
+    int vec_height,
     int height,
     int width,
     int zero_width,
@@ -194,7 +212,7 @@ void vecquant2matmul_cuda(
 
   AT_DISPATCH_FLOATING_TYPES(
     vec.type(), "vecquant2matmul_cuda", ([&] {
-     hipLaunchKernelGGL(( VecQuant2MatMulKernel), dim3(blocks), dim3(threads), 0, 0, 
+      hipLaunchKernelGGL(VecQuant2MatMulKernel, blocks, threads, 0, 0, 
         vec.data<scalar_t>(), mat.data<int>(), mul.data<scalar_t>(),
         scales.data<scalar_t>(), zeros.data<int>(),
         batch, vec_height, height, width, zero_width, groupsize
@@ -209,7 +227,7 @@ __global__ void VecQuant2MatMulKernel(
     const       int* __restrict__ mat,
            scalar_t* __restrict__ mul,
     const  scalar_t* __restrict__ scales,
-    const  	int* __restrict__ zeros,
+    const       int* __restrict__ zeros,
     int batch,
     int vec_height,
     int height,
@@ -237,11 +255,11 @@ __global__ void VecQuant2MatMulKernel(
 
   while (k < BLOCKWIDTH) {
     tmp = as_unsigned(mat[i]);
-	
+
     int g = (g_h + k) / groupsize;
     scalar_t scale = scales[g * width + w];
     scalar_t zero = scale * scalar_t((as_unsigned(zeros[g * zero_width + z_w]) >> z_mod & 0x3) + 1);
-	
+
     res += (scale * scalar_t((tmp >> 0) & 0x3) - zero) * blockvec[k + 0];
     res += (scale * scalar_t((tmp >> 2) & 0x3) - zero) * blockvec[k + 1];
     res += (scale * scalar_t((tmp >> 4) & 0x3) - zero) * blockvec[k + 2];
@@ -258,7 +276,7 @@ __global__ void VecQuant2MatMulKernel(
     res += (scale * scalar_t((tmp >> 26) & 0x3) - zero) * blockvec[k + 13];
     res += (scale * scalar_t((tmp >> 28) & 0x3) - zero) * blockvec[k + 14];
     res += (scale * scalar_t((tmp >> 30) & 0x3) - zero) * blockvec[k + 15];
-	
+
     i += width;
     k += 16;
   }
@@ -289,7 +307,7 @@ void vecquant3matmul_cuda(
 
   AT_DISPATCH_FLOATING_TYPES(
     vec.type(), "vecquant3matmul_cuda", ([&] {
-     hipLaunchKernelGGL(( VecQuant3MatMulKernel), dim3(blocks), dim3(threads), 0, 0, 
+      hipLaunchKernelGGL(VecQuant3MatMulKernel, blocks, threads, 0, 0, 
         vec.data<scalar_t>(), mat.data<int>(), mul.data<scalar_t>(),
         scales.data<scalar_t>(), zeros.data<int>(),
         batch, vec_height, height, width, zero_width, groupsize
@@ -304,7 +322,7 @@ __global__ void VecQuant3MatMulKernel(
     const       int* __restrict__ mat,
            scalar_t* __restrict__ mul,
     const  scalar_t* __restrict__ scales,
-    const  	int* __restrict__ zeros,
+    const       int* __restrict__ zeros,
     int batch,
     int vec_height,
     int height,
@@ -357,7 +375,7 @@ __global__ void VecQuant3MatMulKernel(
 
   while (k < BLOCKWIDTH) {
     tmp1 = as_unsigned(mat[i]);
-	
+
     int g = (g_h + k) / groupsize;
     scalar_t scale = scales[g * width + w];
     scalar_t zero;
@@ -370,7 +388,7 @@ __global__ void VecQuant3MatMulKernel(
     } else {
       zero = scale * scalar_t(((as_unsigned(zeros[g * zero_width + z_w]) >> z_bit) & 0x7) + 1);
     }
-	
+
     res += (scale * scalar_t((tmp1 >>  0) & 0x7) - zero) * blockvec[k + 0];
     res += (scale * scalar_t((tmp1 >>  3) & 0x7) - zero) * blockvec[k + 1];
     res += (scale * scalar_t((tmp1 >>  6) & 0x7) - zero) * blockvec[k + 2];
@@ -381,14 +399,14 @@ __global__ void VecQuant3MatMulKernel(
     res += (scale * scalar_t((tmp1 >> 21) & 0x7) - zero) * blockvec[k + 7];
     res += (scale * scalar_t((tmp1 >> 24) & 0x7) - zero) * blockvec[k + 8];
     res += (scale * scalar_t((tmp1 >> 27) & 0x7) - zero) * blockvec[k + 9];
-	
+
     i += width;
     tmp2 = as_unsigned(mat[i]);
     tmp = (tmp1 >> 30) | ((tmp2 << 2) & 0x4);
     tmp2 >>= 1;
     res += (scale * scalar_t(tmp) - zero) * blockvec[k + 10];
     k += 11;
-	
+
     res += (scale * scalar_t((tmp2 >>  0) & 0x7) - zero) * blockvec[k + 0];
     res += (scale * scalar_t((tmp2 >>  3) & 0x7) - zero) * blockvec[k + 1];
     res += (scale * scalar_t((tmp2 >>  6) & 0x7) - zero) * blockvec[k + 2];
@@ -399,14 +417,14 @@ __global__ void VecQuant3MatMulKernel(
     res += (scale * scalar_t((tmp2 >> 21) & 0x7) - zero) * blockvec[k + 7];
     res += (scale * scalar_t((tmp2 >> 24) & 0x7) - zero) * blockvec[k + 8];
     res += (scale * scalar_t((tmp2 >> 27) & 0x7) - zero) * blockvec[k + 9];
-	
+
     i += width;
     tmp1 = as_unsigned(mat[i]);
     tmp = (tmp2 >> 30) | ((tmp1 << 1) & 0x6);
     tmp1 >>= 2;
     res += (scale * scalar_t(tmp) - zero) * blockvec[k + 10];
     k += 11;
-	
+
     res += (scale * scalar_t((tmp1 >>  0) & 0x7) - zero) * blockvec[k + 0];
     res += (scale * scalar_t((tmp1 >>  3) & 0x7) - zero) * blockvec[k + 1];
     res += (scale * scalar_t((tmp1 >>  6) & 0x7) - zero) * blockvec[k + 2];
@@ -417,7 +435,7 @@ __global__ void VecQuant3MatMulKernel(
     res += (scale * scalar_t((tmp1 >> 21) & 0x7) - zero) * blockvec[k + 7];
     res += (scale * scalar_t((tmp1 >> 24) & 0x7) - zero) * blockvec[k + 8];
     res += (scale * scalar_t((tmp1 >> 27) & 0x7) - zero) * blockvec[k + 9];
-	
+
     i += width;
     k += 10;
   }
@@ -448,7 +466,7 @@ void vecquant4matmul_cuda(
 
   AT_DISPATCH_FLOATING_TYPES(
     vec.type(), "vecquant4matmul_cuda", ([&] {
-     hipLaunchKernelGGL(( VecQuant4MatMulKernel), dim3(blocks), dim3(threads), 0, 0, 
+      hipLaunchKernelGGL(VecQuant4MatMulKernel, blocks, threads, 0, 0, 
         vec.data<scalar_t>(), mat.data<int>(), mul.data<scalar_t>(),
         scales.data<scalar_t>(), zeros.data<int>(),
         batch, vec_height, height, width, zero_width, groupsize
@@ -491,11 +509,11 @@ __global__ void VecQuant4MatMulKernel(
 
   while (k < BLOCKWIDTH) {
     tmp = as_unsigned(mat[i]);
-	
+
     int g = (g_h + k) / groupsize;
     scalar_t scale = scales[g * width + w];
     scalar_t zero = scale * scalar_t(((as_unsigned(zeros[g * zero_width + z_w]) >> z_mod) & 0xF) + 1);
-	
+
     res += (scale * scalar_t((tmp >> 0) & 0xF) - zero) * blockvec[k + 0];
     res += (scale * scalar_t((tmp >> 4) & 0xF) - zero) * blockvec[k + 1];
     res += (scale * scalar_t((tmp >> 8) & 0xF) - zero) * blockvec[k + 2];
@@ -504,7 +522,7 @@ __global__ void VecQuant4MatMulKernel(
     res += (scale * scalar_t((tmp >> 20) & 0xF) - zero) * blockvec[k + 5];
     res += (scale * scalar_t((tmp >> 24) & 0xF) - zero) * blockvec[k + 6];
     res += (scale * scalar_t((tmp >> 28) & 0xF) - zero) * blockvec[k + 7];
-	
+
     i += width;
     k += 8;
   }
@@ -535,7 +553,7 @@ void vecquant8matmul_cuda(
 
   AT_DISPATCH_FLOATING_TYPES(
     vec.type(), "vecquant8matmul_cuda", ([&] {
-     hipLaunchKernelGGL(( VecQuant8MatMulKernel), dim3(blocks), dim3(threads), 0, 0, 
+      hipLaunchKernelGGL(VecQuant8MatMulKernel, blocks, threads, 0, 0, 
         vec.data<scalar_t>(), mat.data<int>(), mul.data<scalar_t>(),
         scales.data<scalar_t>(), zeros.data<int>(),
         batch, vec_height, height, width, zero_width, groupsize
@@ -550,7 +568,7 @@ __global__ void VecQuant8MatMulKernel(
     const       int* __restrict__ mat,
            scalar_t* __restrict__ mul,
     const  scalar_t* __restrict__ scales,
-    const  	int* __restrict__ zeros,
+    const       int* __restrict__ zeros,
     int batch,
     int vec_height,
     int height,
@@ -578,16 +596,16 @@ __global__ void VecQuant8MatMulKernel(
 
   while (k < BLOCKWIDTH) { 
     tmp = as_unsigned(mat[i]);
-	
+
     int g = (g_h + k) / groupsize;
     scalar_t scale = scales[g * width + w];
     scalar_t zero = scale * scalar_t(((as_unsigned(zeros[g * zero_width + z_w]) >> z_mod) & 0xFF) + 1);
-	
+
     res += (scale * scalar_t((tmp >> 0) & 0xFF) - zero) * blockvec[k + 0];
     res += (scale * scalar_t((tmp >> 8) & 0xFF) - zero) * blockvec[k + 1];
     res += (scale * scalar_t((tmp >> 16) & 0xFF) - zero) * blockvec[k + 2];
     res += (scale * scalar_t((tmp >> 24) & 0xFF) - zero) * blockvec[k + 3];
-	
+
     i += width;
     k += 4;
   }
@@ -617,7 +635,7 @@ void vecquant2matmul_faster_cuda(
   );
   dim3 threads(BLOCKWIDTH);
 
- hipLaunchKernelGGL(( VecQuant2MatMulKernelFaster), dim3(blocks), dim3(threads), 0, 0, 
+  hipLaunchKernelGGL(VecQuant2MatMulKernelFaster, blocks, threads, 0, 0, 
     (half2*) vec.data_ptr(),
     mat.data_ptr<int>(),
     mul.data_ptr<float>(),
@@ -632,9 +650,9 @@ __global__ void VecQuant2MatMulKernelFaster(
     const    int* __restrict__ mat,
            float* __restrict__ mul,
     const  float* __restrict__ scales,
-    const  	 int* __restrict__ zeros,
-	int batch,
-	int vec_height,
+    const    int* __restrict__ zeros,
+    int batch,
+    int vec_height,
     int height,
     int width,
     int zero_width,
@@ -674,12 +692,11 @@ __global__ void VecQuant2MatMulKernelFaster(
 
   while (k < blockwidth2) {
     int g = (g_h + (k * 2)) / groupsize;
-	float scale_f = scales[g * width + w];
+    float scale_f = scales[g * width + w];
     half2 scale = __float2half2_rn(scale_f);
     half2 zero = __float2half2_rn(-(scale_f * (((as_unsigned(zeros[g * zero_width + z_w]) >> z_mod) & 0x3) + 1)));
-	
-    //res2 = {};
-    std::memset(&res2, 0, sizeof(half2));
+
+    res2 = half2({});
     tmp = as_unsigned(mat[i]);
     res2 = __hfma2(__hfma2(deq2[(tmp >>  0) & 0xf][off], scale, zero), blockvec[k + 0], res2);
     res2 = __hfma2(__hfma2(deq2[(tmp >>  4) & 0xf][off], scale, zero), blockvec[k + 1], res2);
@@ -689,10 +706,9 @@ __global__ void VecQuant2MatMulKernelFaster(
     res2 = __hfma2(__hfma2(deq2[(tmp >> 20) & 0xf][off], scale, zero), blockvec[k + 5], res2);
     res2 = __hfma2(__hfma2(deq2[(tmp >> 24) & 0xf][off], scale, zero), blockvec[k + 6], res2);
     res2 = __hfma2(__hfma2(deq2[(tmp >> 28) & 0xf][off], scale, zero), blockvec[k + 7], res2);
-	i += width;
+    i += width;
     k += 8;
-    //res += __half2float(res2.x) + __half2float(res2.y);
-    
+    // res += __half2float(res2.x) + __half2float(res2.y);
     float2 res2float = __half22float2(res2);
     res += res2float.x + res2float.y;
   }
@@ -721,7 +737,7 @@ void vecquant3matmul_faster_cuda(
   );
   dim3 threads(BLOCKWIDTH);
 
- hipLaunchKernelGGL(( VecQuant3MatMulKernelFaster), dim3(blocks), dim3(threads), 0, 0, 
+  hipLaunchKernelGGL(VecQuant3MatMulKernelFaster, blocks, threads, 0, 0, 
     (half2*) vec.data_ptr(),
     mat.data_ptr<int>(),
     mul.data_ptr<float>(),
@@ -736,9 +752,9 @@ __global__ void VecQuant3MatMulKernelFaster(
     const    int* __restrict__ mat,
            float* __restrict__ mul,
     const  float* __restrict__ scales,
-    const  	 int* __restrict__ zeros,
-	int batch,
-	int vec_height,
+    const    int* __restrict__ zeros,
+    int batch,
+    int vec_height,
     int height,
     int width,
     int zero_width,
@@ -803,7 +819,7 @@ __global__ void VecQuant3MatMulKernelFaster(
 
   while (k < blockwidth2) {
     int g = (g_h + (k * 2)) / groupsize;
-	float scale_f = scales[g * width + w];
+    float scale_f = scales[g * width + w];
     half2 scale = __float2half2_rn(scale_f);
     half2 zero;
     if (z_mod == 10) {
@@ -815,9 +831,8 @@ __global__ void VecQuant3MatMulKernelFaster(
     } else {
       zero = __float2half2_rn(-(scale_f * (((as_unsigned(zeros[g * zero_width + z_w]) >> z_bit) & 0x7) + 1)));
     }
-	
-    //res2 = {};
-    std::memset(&res2, 0, sizeof(half2));
+
+    res2 = half2({});
     tmp1 = as_unsigned(mat[i]);
     res2 = __hfma2(__hfma2(deq2[(tmp1 >>  0) & 0x3f][off], scale, zero), blockvec[k + 0], res2);
     res2 = __hfma2(__hfma2(deq2[(tmp1 >>  6) & 0x3f][off], scale, zero), blockvec[k + 1], res2);
@@ -847,9 +862,8 @@ __global__ void VecQuant3MatMulKernelFaster(
     res2 = __hfma2(__hfma2(deq2[(tmp1 >> 24) & 0x3f][off], scale, zero), blockvec[k + 4], res2);
     i += width;
     k += 5;
-    //res += __half2float(res2.x) + __half2float(res2.y);
-    
-    float2 res2float = __half22float2(res2); 
+    // res += __half2float(res2.x) + __half2float(res2.y);
+    float2 res2float = __half22float2(res2);
     res += res2float.x + res2float.y;
   }
 
@@ -877,7 +891,7 @@ void vecquant4matmul_faster_cuda(
   );
   dim3 threads(BLOCKWIDTH);
 
- hipLaunchKernelGGL(( VecQuant4MatMulKernelFaster), dim3(blocks), dim3(threads), 0, 0, 
+  hipLaunchKernelGGL(VecQuant4MatMulKernelFaster, blocks, threads, 0, 0, 
     (half2*) vec.data_ptr(),
     mat.data_ptr<int>(),
     mul.data_ptr<float>(),
@@ -892,9 +906,9 @@ __global__ void VecQuant4MatMulKernelFaster(
     const    int* __restrict__ mat,
            float* __restrict__ mul,
     const  float* __restrict__ scales,
-    const  	 int* __restrict__ zeros,
-	int batch,
-	int vec_height,
+    const    int* __restrict__ zeros,
+    int batch,
+    int vec_height,
     int height,
     int width,
     int zero_width,
@@ -934,21 +948,19 @@ __global__ void VecQuant4MatMulKernelFaster(
 
   while (k < blockwidth2) {
     int g = (g_h + (k * 2)) / groupsize;
-	float scale_f = scales[g * width + w];
+    float scale_f = scales[g * width + w];
     half2 scale = __float2half2_rn(scale_f);
     half2 zero = __float2half2_rn(-(scale_f * (((as_unsigned(zeros[g * zero_width + z_w]) >> z_mod) & 0xF) + 1)));
-	
-    //res2 = {};
-    std::memset(&res2, 0, sizeof(half2));
+
+    res2 = half2({});
     tmp = as_unsigned(mat[i]);
     res2 = __hfma2(__hfma2(deq2[(tmp >>  0) & 0xff][off], scale, zero), blockvec[k + 0], res2);
     res2 = __hfma2(__hfma2(deq2[(tmp >>  8) & 0xff][off], scale, zero), blockvec[k + 1], res2);
     res2 = __hfma2(__hfma2(deq2[(tmp >> 16) & 0xff][off], scale, zero), blockvec[k + 2], res2);
     res2 = __hfma2(__hfma2(deq2[(tmp >> 24) & 0xff][off], scale, zero), blockvec[k + 3], res2);
-	i += width;
+    i += width;
     k += 4;
-    //res += __half2float(res2.x) + __half2float(res2.y);
-    
+    // res += __half2float(res2.x) + __half2float(res2.y);
     float2 res2float = __half22float2(res2);
     res += res2float.x + res2float.y;
   }
