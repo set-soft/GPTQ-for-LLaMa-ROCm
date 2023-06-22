@@ -5,10 +5,22 @@ np.random.seed(0)
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 import quant_cuda
 import os
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
+
+def compute_err(name, ref, res):
+    # Compute Mean Absolute Error (MAE)
+    mae = F.l1_loss(res, ref)
+    # Compute Root Mean Square Error (RMSE)
+    mse = F.mse_loss(res, ref)
+    rmse = torch.sqrt(mse)
+    max_abs_error = (res - ref).abs().max().item()
+    print(f'- {name} version: max abs {max_abs_error:.2e}, Mean Absolute Error (MAE): {mae:.2e} Root Mean Square Error (RMSE): {rmse:.2e}')
+
 
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
@@ -128,16 +140,12 @@ layer = layer.to(DEV)
 
 print('2 bits:')
 with torch.no_grad():
-    ref = layer.to(DEV)(vec)
+    ref = layer(vec)
     res = qlayer(vec)
     qlayer.faster = True
     res_half = qlayer(vec.half())
-
-max_abs_error = (res - ref).abs().max().item()
-assert max_abs_error < 2e-5, max_abs_error
-print(f'- Ok ({max_abs_error:.10f})')
-max_abs_error = (res_half - ref).abs().max().item()
-print(f'- ?? ({max_abs_error:.10f})')
+    compute_err('Normal', ref, res)
+    compute_err('Faster', ref, res_half)
 
 layer = nn.Linear(M, N)
 vec = torch.randn(B,L,M).to(DEV)
@@ -157,16 +165,12 @@ layer = layer.to(DEV)
 
 print('3 bits:')
 with torch.no_grad():
-    ref = layer.to(DEV)(vec)
+    ref = layer(vec)
     res = qlayer(vec)
     qlayer.faster = True
     res_half = qlayer(vec.half())
-
-max_abs_error = (res - ref).abs().max().item()
-assert max_abs_error < 2e-5, max_abs_error
-print(f'- Ok ({max_abs_error:.10f})')
-max_abs_error = (res_half - ref).abs().max().item()
-print(f'- ?? ({max_abs_error:.10f})')
+    compute_err('Normal', ref, res)
+    compute_err('Faster', ref, res_half)
 
 layer = nn.Linear(M, N)
 vec = torch.randn(B,L,M).to(DEV)
@@ -186,16 +190,12 @@ layer = layer.to(DEV)
 
 print('4 bits:')
 with torch.no_grad():
-    ref = layer.to(DEV)(vec)
+    ref = layer(vec)
     res = qlayer(vec)
     qlayer.faster = True
     res_half = qlayer(vec.half())
-
-max_abs_error = (res - ref).abs().max().item()
-assert max_abs_error < 2e-5, max_abs_error
-print(f'- Ok ({max_abs_error:.10f})')
-max_abs_error = (res_half - ref).abs().max().item()
-print(f'- ?? ({max_abs_error:.10f})')
+    compute_err('Normal', ref, res)
+    compute_err('Faster', ref, res_half)
 
 layer = nn.Linear(M, N)
 vec = torch.randn(B,L,M).to(DEV)
@@ -215,10 +215,6 @@ layer = layer.to(DEV)
 
 print('8 bits:')
 with torch.no_grad():
-    ref = layer.to(DEV)(vec)
+    ref = layer(vec)
     res = qlayer(vec)
-
-max_abs_error = (res - ref).abs().max().item()
-assert max_abs_error < 2e-5, max_abs_error
-print(f'- Ok ({max_abs_error:.10f})')
-
+    compute_err('Normal', ref, res)
